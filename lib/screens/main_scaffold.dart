@@ -15,20 +15,18 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold>
     with WidgetsBindingObserver {
-  int _selectedIndex = 0; // Indice del tab selezionato
-  List<Map<String, String>> _favoriteApps =
-      []; // Stato centralizzato per i preferiti
-  bool _isLoading = true; // Flag per caricamento iniziale preferiti
+  int _selectedIndex = 0;
+  List<Map<String, String>> _favoriteApps = [];
+  bool _isLoading = true;
 
-  static const String _favAppsPrefsKey =
-      'favoriteApps'; // Chiave SharedPreferences
+  static const String _favAppsPrefsKey = 'favoriteApps';
 
   @override
   void initState() {
     super.initState();
-    _setOrientationPortrait(); // Blocca orientamento
+    _setOrientationPortrait();
     WidgetsBinding.instance.addObserver(this);
-    _loadFavoriteApps(); // Carica i preferiti all'avvio
+    _loadFavoriteApps();
   }
 
   @override
@@ -37,7 +35,6 @@ class _MainScaffoldState extends State<MainScaffold>
     super.dispose();
   }
 
-  // Funzione helper per impostare l'orientamento verticale
   void _setOrientationPortrait() {
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -48,15 +45,12 @@ class _MainScaffoldState extends State<MainScaffold>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    _setOrientationPortrait(); // Riassicura orientamento
+    _setOrientationPortrait();
     if (state == AppLifecycleState.resumed) {
-      // Potresti voler ricaricare i preferiti qui se possono cambiare esternamente
-      // _loadFavoriteApps();
       developer.log("MainScaffold resumed");
     }
   }
 
-  // Carica i preferiti da SharedPreferences
   Future<void> _loadFavoriteApps() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -78,6 +72,9 @@ class _MainScaffoldState extends State<MainScaffold>
               .where((fav) => fav['packageName']!.isNotEmpty),
         );
       }
+      developer.log(
+        "MainScaffold: caricati ${loadedFavorites.length} preferiti da disco.",
+      );
       if (mounted) {
         setState(() {
           _favoriteApps = loadedFavorites;
@@ -90,20 +87,23 @@ class _MainScaffoldState extends State<MainScaffold>
         error: e,
       );
       if (mounted) {
-        setState(
-          () => _isLoading = false,
-        ); // Assicurati di fermare il caricamento anche in caso di errore
+        setState(() => _isLoading = false);
       }
     }
   }
 
-  // Salva i preferiti in SharedPreferences
+  // ---------------------------------------------------------------------------
+  // FIX: _saveFavoriteApps viene chiamato SOLO da _onFavoritesUpdated, che a
+  // sua volta viene chiamata solo quando:
+  //   1. L'utente tocca la stella esplicitamente.
+  //   2. Un'app viene realmente disinstallata (evento package_removed).
+  // Mai durante il semplice caricamento/refresh della lista app.
+  // ---------------------------------------------------------------------------
   Future<void> _saveFavoriteApps(
     List<Map<String, String>> favoritesToSave,
   ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // Salva solo appName e packageName
       final listToSave =
           favoritesToSave
               .map(
@@ -115,7 +115,9 @@ class _MainScaffoldState extends State<MainScaffold>
               .toList();
       final jsonString = jsonEncode(listToSave);
       await prefs.setString(_favAppsPrefsKey, jsonString);
-      developer.log("Preferiti salvati da MainScaffold");
+      developer.log(
+        "MainScaffold: salvati ${favoritesToSave.length} preferiti su disco.",
+      );
     } catch (e) {
       developer.log(
         "Errore salvataggio preferiti in MainScaffold: $e",
@@ -124,38 +126,33 @@ class _MainScaffoldState extends State<MainScaffold>
     }
   }
 
-  // Callback chiamata da AllAppsScreenContent quando i preferiti cambiano
   void _onFavoritesUpdated(List<Map<String, String>> updatedFavorites) {
     if (!mounted) return;
     developer.log(
-      "MainScaffold: Ricevuti ${updatedFavorites.length} preferiti aggiornati",
+      "MainScaffold: ricevuti ${updatedFavorites.length} preferiti aggiornati dall'utente.",
     );
     setState(() {
-      _favoriteApps = updatedFavorites; // Aggiorna lo stato centrale
+      _favoriteApps = updatedFavorites;
     });
-    _saveFavoriteApps(updatedFavorites); // Salva immediatamente le modifiche
+    // Salva immediatamente: questa callback è chiamata solo per azioni utente
+    // o disinstallazioni reali, mai per un semplice refresh della lista app.
+    _saveFavoriteApps(updatedFavorites);
   }
 
-  // Gestisce il tap sulla BottomNavigationBar
   void _onItemTapped(int index) {
     if (!mounted) return;
     setState(() {
-      _selectedIndex = index; // Cambia il tab visualizzato
+      _selectedIndex = index;
     });
   }
 
-  // Gestisce il tasto Indietro del sistema
   Future<bool> _onWillPop() async {
     if (_selectedIndex != 0) {
-      // Se non siamo sulla schermata Home (indice 0),
-      // torna alla schermata Home invece di chiudere l'app.
       setState(() {
         _selectedIndex = 0;
       });
-      return false; // Impedisce la chiusura dell'app
+      return false;
     }
-    // Se siamo già sulla schermata Home, impedisci comunque la chiusura
-    // (comportamento tipico di un launcher)
     developer.log(
       "WillPopScope: Back button press bloccato su Home (MainScaffold)",
     );
@@ -166,33 +163,19 @@ class _MainScaffoldState extends State<MainScaffold>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Lista dei widget da mostrare nel body, corrispondenti agli indici dei tab
     final List<Widget> widgetOptions = <Widget>[
-      // Contenuto per il Tab 0 (Home)
-      HomeScreenContent(
-        favoriteApps: _favoriteApps, // Passa lo stato dei preferiti
-        isLoading: _isLoading, // Passa lo stato di caricamento
-      ),
-      // Contenuto per il Tab 1 (Tutte le App)
+      HomeScreenContent(favoriteApps: _favoriteApps, isLoading: _isLoading),
       AllAppsScreenContent(
-        // Passa i preferiti attuali per inizializzare lo stato interno di AllApps
         currentFavorites: List.from(_favoriteApps),
-        // Passa la callback per notificare gli aggiornamenti
         onFavoritesUpdated: _onFavoritesUpdated,
       ),
     ];
 
     return WillPopScope(
-      onWillPop: _onWillPop, // Gestisce il tasto back
+      onWillPop: _onWillPop,
       child: Scaffold(
         backgroundColor: theme.colorScheme.background,
-        // Il body cambia in base all'indice selezionato
-        body: IndexedStack(
-          // IndexedStack mantiene lo stato dei widget non visibili
-          index: _selectedIndex,
-          children: widgetOptions,
-        ),
-        // La BottomNavigationBar è ora gestita qui
+        body: IndexedStack(index: _selectedIndex, children: widgetOptions),
         bottomNavigationBar: BottomNavigationBar(
           items: const <BottomNavigationBarItem>[
             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
