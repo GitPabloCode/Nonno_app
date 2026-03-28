@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer' as developer;
 
 class MainScaffold extends StatefulWidget {
-  const MainScaffold({Key? key}) : super(key: key);
+  const MainScaffold({super.key});
 
   @override
   State<MainScaffold> createState() => _MainScaffoldState();
@@ -47,7 +47,7 @@ class _MainScaffoldState extends State<MainScaffold>
     super.didChangeAppLifecycleState(state);
     _setOrientationPortrait();
     if (state == AppLifecycleState.resumed) {
-      developer.log("MainScaffold resumed");
+      developer.log('MainScaffold resumed');
     }
   }
 
@@ -59,21 +59,21 @@ class _MainScaffoldState extends State<MainScaffold>
       final jsonString = prefs.getString(_favAppsPrefsKey);
       List<Map<String, String>> loadedFavorites = [];
       if (jsonString != null) {
-        final List<dynamic> jsonList = jsonDecode(jsonString);
-        loadedFavorites = List<Map<String, String>>.from(
-          jsonList
-              .map((e) {
-                final map = Map<String, dynamic>.from(e);
-                return {
-                  'appName': map['appName'] as String? ?? 'App',
-                  'packageName': map['packageName'] as String? ?? '',
-                };
-              })
-              .where((fav) => fav['packageName']!.isNotEmpty),
-        );
+        final jsonList = jsonDecode(jsonString) as List<dynamic>;
+        loadedFavorites =
+            jsonList
+                .map((e) {
+                  final map = Map<String, dynamic>.from(e as Map);
+                  return {
+                    'appName': map['appName'] as String? ?? 'App',
+                    'packageName': map['packageName'] as String? ?? '',
+                  };
+                })
+                .where((fav) => fav['packageName']!.isNotEmpty)
+                .toList();
       }
       developer.log(
-        "MainScaffold: caricati ${loadedFavorites.length} preferiti da disco.",
+        'MainScaffold: caricati ${loadedFavorites.length} preferiti da disco.',
       );
       if (mounted) {
         setState(() {
@@ -82,22 +82,15 @@ class _MainScaffoldState extends State<MainScaffold>
         });
       }
     } catch (e) {
-      developer.log(
-        "Errore caricamento preferiti in MainScaffold: $e",
-        error: e,
-      );
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      developer.log('Errore caricamento preferiti: $e', error: e);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   // ---------------------------------------------------------------------------
-  // FIX: _saveFavoriteApps viene chiamato SOLO da _onFavoritesUpdated, che a
-  // sua volta viene chiamata solo quando:
-  //   1. L'utente tocca la stella esplicitamente.
-  //   2. Un'app viene realmente disinstallata (evento package_removed).
-  // Mai durante il semplice caricamento/refresh della lista app.
+  // FIX: _saveFavoriteApps è chiamato SOLO da _onFavoritesUpdated, che a sua
+  // volta viene chiamata solo da azioni esplicite dell'utente (stella) o da
+  // disinstallazioni reali (package_removed). Mai durante il refresh della lista.
   // ---------------------------------------------------------------------------
   Future<void> _saveFavoriteApps(
     List<Map<String, String>> favoritesToSave,
@@ -113,49 +106,35 @@ class _MainScaffoldState extends State<MainScaffold>
                 },
               )
               .toList();
-      final jsonString = jsonEncode(listToSave);
-      await prefs.setString(_favAppsPrefsKey, jsonString);
+      await prefs.setString(_favAppsPrefsKey, jsonEncode(listToSave));
       developer.log(
-        "MainScaffold: salvati ${favoritesToSave.length} preferiti su disco.",
+        'MainScaffold: salvati ${favoritesToSave.length} preferiti su disco.',
       );
     } catch (e) {
-      developer.log(
-        "Errore salvataggio preferiti in MainScaffold: $e",
-        error: e,
-      );
+      developer.log('Errore salvataggio preferiti: $e', error: e);
     }
   }
 
   void _onFavoritesUpdated(List<Map<String, String>> updatedFavorites) {
     if (!mounted) return;
     developer.log(
-      "MainScaffold: ricevuti ${updatedFavorites.length} preferiti aggiornati dall'utente.",
+      'MainScaffold: ${updatedFavorites.length} preferiti aggiornati dall\'utente.',
     );
-    setState(() {
-      _favoriteApps = updatedFavorites;
-    });
-    // Salva immediatamente: questa callback è chiamata solo per azioni utente
-    // o disinstallazioni reali, mai per un semplice refresh della lista app.
+    setState(() => _favoriteApps = updatedFavorites);
     _saveFavoriteApps(updatedFavorites);
   }
 
   void _onItemTapped(int index) {
     if (!mounted) return;
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
   }
 
   Future<bool> _onWillPop() async {
     if (_selectedIndex != 0) {
-      setState(() {
-        _selectedIndex = 0;
-      });
+      setState(() => _selectedIndex = 0);
       return false;
     }
-    developer.log(
-      "WillPopScope: Back button press bloccato su Home (MainScaffold)",
-    );
+    developer.log('WillPopScope: back bloccato su Home');
     return false;
   }
 
@@ -163,7 +142,7 @@ class _MainScaffoldState extends State<MainScaffold>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final List<Widget> widgetOptions = <Widget>[
+    final widgetOptions = <Widget>[
       HomeScreenContent(favoriteApps: _favoriteApps, isLoading: _isLoading),
       AllAppsScreenContent(
         currentFavorites: List.from(_favoriteApps),
@@ -174,7 +153,8 @@ class _MainScaffoldState extends State<MainScaffold>
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        backgroundColor: theme.colorScheme.background,
+        // FIX: colorScheme.background è deprecato in M3 → usare .surface
+        backgroundColor: theme.colorScheme.surface,
         body: IndexedStack(index: _selectedIndex, children: widgetOptions),
         bottomNavigationBar: BottomNavigationBar(
           items: const <BottomNavigationBarItem>[

@@ -9,28 +9,23 @@ import 'dart:developer' as developer;
 
 // -----------------------------------------------------------------------------
 // Widget AllAppsScreenContent
-// Schermata che mostra tutte le app installate, con ricerca e preferiti.
 // -----------------------------------------------------------------------------
 class AllAppsScreenContent extends StatefulWidget {
   final List<Map<String, String>> currentFavorites;
   final Function(List<Map<String, String>>) onFavoritesUpdated;
 
   const AllAppsScreenContent({
-    Key? key,
+    super.key,
     required this.currentFavorites,
     required this.onFavoritesUpdated,
-  }) : super(key: key);
+  });
 
   @override
   State<AllAppsScreenContent> createState() => _AllAppsScreenContentState();
 }
 
-// -----------------------------------------------------------------------------
-// Stato per AllAppsScreenContent
-// -----------------------------------------------------------------------------
 class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  // --- Stato Interno UI & Dati App ---
   List<Map<String, dynamic>> _allAppsWithData = [];
   List<Map<String, dynamic>> _filteredSortedApps = [];
   final TextEditingController _searchController = TextEditingController();
@@ -42,17 +37,14 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
   late Animation<double> _swingAnimation;
   final Map<String, String?> _iconPathCache = {};
 
-  // --- Gestione Salvataggio Click Counts Ottimizzato ---
   static const String _clickCountsPrefsKey = 'app_click_counts';
   Timer? _saveClickCountsTimer;
   bool _clickCountsChangedSinceLastSave = false;
 
-  // --- Gestione Ricerca ---
   bool _isSearchLoading = false;
-  String _lastSearchQuery = "";
+  String _lastSearchQuery = '';
   final _debounceTimer = Debouncer(milliseconds: 400);
 
-  // --- Gestione Eventi Installazione/Rimozione App ---
   static const _packageEventChannel = EventChannel(
     'com.example.nonno_app/package_events',
   );
@@ -67,9 +59,6 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Inizializza i preferiti dalla lista passata da MainScaffold.
-    // Questa è la fonte di verità persistente — non verrà mai sovrascritta
-    // automaticamente durante il caricamento delle app.
     _favoritePackages =
         widget.currentFavorites
             .map((fav) => fav['packageName'] ?? '')
@@ -79,9 +68,7 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     _isLoading = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadInitialData(showLoadingIndicator: false);
-      }
+      if (mounted) _loadInitialData(showLoadingIndicator: false);
     });
 
     _searchController.addListener(_debounceSearchListener);
@@ -96,19 +83,19 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     ).chain(CurveTween(curve: Curves.easeInOut)).animate(_swingController);
 
     _listenToPackageEvents();
-
     developer.log(
-      "AllAppsScreenContent initState completato",
-      name: "AllAppsScreenContent",
+      'AllAppsScreenContent initState completato',
+      name: 'AllAppsScreenContent',
     );
   }
 
   @override
   void dispose() {
-    developer.log("AllAppsScreenContent dispose", name: "AllAppsScreenContent");
+    developer.log('AllAppsScreenContent dispose', name: 'AllAppsScreenContent');
     WidgetsBinding.instance.removeObserver(this);
-    _searchController.removeListener(_debounceSearchListener);
-    _searchController.dispose();
+    _searchController
+      ..removeListener(_debounceSearchListener)
+      ..dispose();
     _swingController.dispose();
     _packageEventSubscription?.cancel();
     _debounceTimer.dispose();
@@ -132,21 +119,21 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       developer.log(
-        "AllAppsScreenContent resumed, ricarico dati",
-        name: "AllAppsScreenContent",
+        'AllAppsScreenContent resumed, ricarico dati',
+        name: 'AllAppsScreenContent',
       );
-      _loadInitialData(showLoadingIndicator: !_allAppsWithData.isNotEmpty);
+      _loadInitialData(showLoadingIndicator: _allAppsWithData.isEmpty);
     } else if (state == AppLifecycleState.paused) {
       developer.log(
-        "AllAppsScreenContent paused, salvo click counts se cambiati",
-        name: "AllAppsScreenContent",
+        'AllAppsScreenContent paused, salvo click counts',
+        name: 'AllAppsScreenContent',
       );
       _saveClickCountsNowIfChanged();
     }
   }
 
   // ---------------------------------------------------------------------------
-  // EVENTCHANNEL — Aggiunta/Rimozione App Esterna
+  // EVENTCHANNEL
   // ---------------------------------------------------------------------------
 
   void _listenToPackageEvents() {
@@ -155,18 +142,16 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
         .receiveBroadcastStream()
         .listen(
           _handlePackageEvent,
-          onError: (error) {
-            developer.log(
-              "Errore EventChannel: $error",
-              name: "AllAppsScreenContent",
-            );
-          },
-          onDone: () {
-            developer.log(
-              "EventChannel stream chiuso.",
-              name: "AllAppsScreenContent",
-            );
-          },
+          onError:
+              (Object error) => developer.log(
+                'Errore EventChannel: $error',
+                name: 'AllAppsScreenContent',
+              ),
+          onDone:
+              () => developer.log(
+                'EventChannel stream chiuso.',
+                name: 'AllAppsScreenContent',
+              ),
         );
     developer.log(
       'In ascolto per eventi pacchetto...',
@@ -179,60 +164,40 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
       'Evento pacchetto ricevuto: $event',
       name: 'AllAppsScreenContent',
     );
-    if (event is Map) {
-      final String eventType = event['event'] ?? '';
-      final String? packageName = event['packageName'];
+    if (event is! Map) return;
 
-      if (packageName != null && packageName.isNotEmpty) {
-        if (eventType == 'package_removed') {
-          if (mounted) {
-            bool favoriteRemoved = false;
-            bool countsRemoved = false;
-            setState(() {
-              _allAppsWithData.removeWhere(
-                (a) => a['packageName'] == packageName,
-              );
-              _iconPathCache.remove(packageName);
+    final eventType = event['event'] as String? ?? '';
+    final packageName = event['packageName'] as String?;
+    if (packageName == null || packageName.isEmpty) return;
 
-              // ----------------------------------------------------------------
-              // FIX: rimuovi il preferito dall'insieme locale. Poiché questo
-              // evento viene dall'utente che ha DAVVERO disinstallato l'app,
-              // è sicuro rimuoverlo e notificare il padre perché salvi.
-              // ----------------------------------------------------------------
-              if (_favoritePackages.contains(packageName)) {
-                _favoritePackages.remove(packageName);
-                favoriteRemoved = true;
-              }
-              if (_clickCounts.containsKey(packageName)) {
-                _clickCounts.remove(packageName);
-                countsRemoved = true;
-              }
-              _applyFilterAndSort(_searchController.text.trim());
-            });
-
-            // Salva i preferiti solo se un'app è stata realmente disinstallata
-            if (favoriteRemoved) {
-              widget.onFavoritesUpdated(getUpdatedFavoritesData());
-            }
-            if (countsRemoved) {
-              _clickCountsChangedSinceLastSave = true;
-              _saveClickCountsNowIfChanged();
-            }
-          }
-        } else if (eventType == 'package_added' ||
-            eventType == 'package_changed') {
-          developer.log(
-            'Pacchetto $packageName aggiunto/modificato, ricarico dati.',
-            name: 'AllAppsScreenContent',
-          );
-          _loadInitialData(showLoadingIndicator: _allAppsWithData.isEmpty);
-        }
+    if (eventType == 'package_removed') {
+      if (!mounted) return;
+      bool favoriteRemoved = false;
+      bool countsRemoved = false;
+      setState(() {
+        _allAppsWithData.removeWhere((a) => a['packageName'] == packageName);
+        _iconPathCache.remove(packageName);
+        if (_favoritePackages.remove(packageName)) favoriteRemoved = true;
+        if (_clickCounts.remove(packageName) != null) countsRemoved = true;
+        _applyFilterAndSort(_searchController.text.trim());
+      });
+      // Solo qui (disinstallazione reale) è lecito salvare su disco i preferiti
+      if (favoriteRemoved) widget.onFavoritesUpdated(getUpdatedFavoritesData());
+      if (countsRemoved) {
+        _clickCountsChangedSinceLastSave = true;
+        _saveClickCountsNowIfChanged();
       }
+    } else if (eventType == 'package_added' || eventType == 'package_changed') {
+      developer.log(
+        'Pacchetto $packageName aggiunto/modificato, ricarico.',
+        name: 'AllAppsScreenContent',
+      );
+      _loadInitialData(showLoadingIndicator: _allAppsWithData.isEmpty);
     }
   }
 
   // ---------------------------------------------------------------------------
-  // CARICAMENTO DATI
+  // CLICK COUNTS
   // ---------------------------------------------------------------------------
 
   Future<void> _loadClickCounts() async {
@@ -240,47 +205,38 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
       final prefs = await SharedPreferences.getInstance();
       final jsonString = prefs.getString(_clickCountsPrefsKey);
       if (jsonString != null) {
-        final decodedMap = jsonDecode(jsonString) as Map<String, dynamic>;
-        _clickCounts = decodedMap.map(
-          (key, value) => MapEntry(key, value as int? ?? 0),
-        );
+        final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
+        _clickCounts = decoded.map((k, v) => MapEntry(k, v as int? ?? 0));
       } else {
         _clickCounts = {};
       }
       _clickCountsChangedSinceLastSave = false;
-      developer.log("Click counts caricati.", name: "AllAppsScreenContent");
-    } catch (e, stacktrace) {
+      developer.log('Click counts caricati.', name: 'AllAppsScreenContent');
+    } catch (e, s) {
       developer.log(
-        "Errore caricamento click counts: $e",
+        'Errore caricamento click counts: $e',
         name: 'AllAppsScreenContent',
         error: e,
-        stackTrace: stacktrace,
+        stackTrace: s,
       );
       _clickCounts = {};
     }
   }
 
   Future<void> _saveClickCountsNowIfChanged() async {
-    if (!_clickCountsChangedSinceLastSave) {
-      developer.log(
-        "Salvataggio click counts saltato (nessuna modifica).",
-        name: "AllAppsScreenContent",
-      );
-      return;
-    }
-    developer.log("Salvataggio click counts...", name: "AllAppsScreenContent");
+    if (!_clickCountsChangedSinceLastSave) return;
+    developer.log('Salvataggio click counts...', name: 'AllAppsScreenContent');
     _saveClickCountsTimer?.cancel();
     try {
       final prefs = await SharedPreferences.getInstance();
-      final jsonString = jsonEncode(_clickCounts);
-      await prefs.setString(_clickCountsPrefsKey, jsonString);
+      await prefs.setString(_clickCountsPrefsKey, jsonEncode(_clickCounts));
       _clickCountsChangedSinceLastSave = false;
-    } catch (e, stacktrace) {
+    } catch (e, s) {
       developer.log(
-        "Errore salvataggio click counts: $e",
+        'Errore salvataggio click counts: $e',
         name: 'AllAppsScreenContent',
         error: e,
-        stackTrace: stacktrace,
+        stackTrace: s,
       );
     }
   }
@@ -288,128 +244,92 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
   void _scheduleSaveClickCounts() {
     if (!_clickCountsChangedSinceLastSave) return;
     _saveClickCountsTimer?.cancel();
-    _saveClickCountsTimer = Timer(const Duration(seconds: 15), () {
-      _saveClickCountsNowIfChanged();
-    });
+    _saveClickCountsTimer = Timer(
+      const Duration(seconds: 15),
+      _saveClickCountsNowIfChanged,
+    );
   }
 
   // ---------------------------------------------------------------------------
   // CARICAMENTO INIZIALE
   //
-  // FIX PRINCIPALE: la sincronizzazione dei preferiti aggiorna SOLO l'insieme
-  // in memoria (_favoritePackages). NON chiama mai onFavoritesUpdated() qui,
-  // quindi non scrive mai sui preferiti persistenti durante il caricamento.
-  //
-  // I preferiti vengono scritti su disco ESCLUSIVAMENTE quando l'utente tocca
-  // la stella (_toggleFavorite) oppure quando un'app viene davvero disinstallata
-  // (evento package_removed da EventChannel).
-  //
-  // Questo elimina il bug in cui getInstalledApps() restituisce una lista
-  // incompleta (es. YouTube / DAZN con split APK, profilo lavoro, avvio lento)
-  // e l'app credeva erroneamente che quei preferiti fossero stati disinstallati.
+  // FIX: la sincronizzazione preferiti aggiorna SOLO _favoritePackages in
+  // memoria. Non chiama mai onFavoritesUpdated() → nessuna scrittura su disco.
+  // I preferiti vengono scritti su disco SOLO da _toggleFavorite (stella) e
+  // da _handlePackageEvent (package_removed = disinstallazione reale).
   // ---------------------------------------------------------------------------
   Future<void> _loadInitialData({bool showLoadingIndicator = true}) async {
-    developer.log(
-      "Esecuzione _loadInitialData...",
-      name: "AllAppsScreenContent",
-    );
-
+    developer.log('_loadInitialData...', name: 'AllAppsScreenContent');
     try {
       final results = await Future.wait([
         getInstalledApps(),
         _loadClickCounts(),
       ]);
-
       if (!mounted) return;
 
-      final List<Map<String, String>> apps =
-          results[0] as List<Map<String, String>>;
-
-      final List<Map<String, dynamic>> appsWithData =
+      final apps = results[0] as List<Map<String, String>>;
+      final appsWithData =
           apps.map((app) {
             final pkg = app['packageName'] ?? '';
-            return {...app, 'clickCount': _clickCounts[pkg] ?? 0};
+            return <String, dynamic>{
+              ...app,
+              'clickCount': _clickCounts[pkg] ?? 0,
+            };
           }).toList();
 
-      // Pre-fetch dei percorsi delle icone
+      // Pre-fetch percorsi icone in parallelo
       final Map<String, String?> currentIconPaths = {};
-      List<Future> iconPathFutures = [];
-      for (var app in appsWithData) {
-        final pkg = app['packageName'] as String?;
-        if (pkg != null && pkg.isNotEmpty) {
-          iconPathFutures.add(
-            getAppIconPath(pkg)
+      await Future.wait([
+        for (final app in appsWithData)
+          if ((app['packageName'] as String?)?.isNotEmpty == true)
+            getAppIconPath(app['packageName'] as String)
                 .then((path) {
                   if (mounted) {
-                    currentIconPaths[pkg] = path.isNotEmpty ? path : null;
+                    currentIconPaths[app['packageName'] as String] =
+                        path.isNotEmpty ? path : null;
                   }
                 })
-                .catchError((e) {
+                .catchError((Object e) {
                   developer.log(
-                    "Errore getAppIconPath per $pkg: $e",
-                    name: "AllAppsScreenContent",
+                    'Errore getAppIconPath per ${app['packageName']}: $e',
+                    name: 'AllAppsScreenContent',
                   );
                   if (mounted) {
-                    currentIconPaths[pkg] = null;
+                    currentIconPaths[app['packageName'] as String] = null;
                   }
                 }),
-          );
-        }
-      }
+      ]);
 
-      await Future.wait(iconPathFutures);
-      developer.log("Percorsi icone ottenuti.", name: "AllAppsScreenContent");
-
+      developer.log('Percorsi icone ottenuti.', name: 'AllAppsScreenContent');
       if (!mounted) return;
 
       setState(() {
         _allAppsWithData = appsWithData;
-        _iconPathCache.clear();
-        _iconPathCache.addAll(currentIconPaths);
+        _iconPathCache
+          ..clear()
+          ..addAll(currentIconPaths);
 
-        // ----------------------------------------------------------------
-        // FIX: sincronizzazione preferiti SOLO in memoria.
-        //
-        // Se getInstalledApps() restituisce una lista incompleta (situazione
-        // comune con split APK, profilo lavoro, o caricamento lento di Android),
-        // NON vogliamo rimuovere definitivamente i preferiti dalla memoria
-        // persistente. Aggiorniamo solo _favoritePackages in-memory, senza
-        // chiamare onFavoritesUpdated() → nessuna scrittura su disco.
-        //
-        // La pulizia dei preferiti viene fatta SOLO quando:
-        //   1. L'utente tocca la stella esplicitamente (_toggleFavorite).
-        //   2. Android segnala una disinstallazione reale (package_removed).
-        // ----------------------------------------------------------------
+        // FIX: aggiorna preferiti solo in memoria, mai su disco.
+        // Guarda di sicurezza: salta se la lista sembra incompleta
+        // (split APK, profilo lavoro, avvio lento di Android).
         if (appsWithData.length > 10) {
-          // Guarda di sicurezza: se la lista è troppo corta, salta del tutto
-          // la pulizia per evitare falsi positivi.
           _favoritePackages.removeWhere(
-            (pkg) => !_allAppsWithData.any((app) => app['packageName'] == pkg),
+            (pkg) => !_allAppsWithData.any((a) => a['packageName'] == pkg),
           );
           // NON chiamiamo widget.onFavoritesUpdated() qui.
-          // I preferiti rimossi rimarranno assenti dalla UI (nessuna stella
-          // visibile) perché l'app non è in _allAppsWithData, ma non verranno
-          // cancellati dal disco finché l'utente non torna ad avere l'app
-          // installata o non avviene un evento package_removed reale.
         }
 
         _isLoading = false;
         _applyFilterAndSort(_searchController.text.trim());
-
-        developer.log(
-          "Stato aggiornato, _isLoading = false.",
-          name: "AllAppsScreenContent",
-        );
+        developer.log('_isLoading = false.', name: 'AllAppsScreenContent');
       });
     } catch (e, s) {
       developer.log(
-        "Errore _loadInitialData: $e",
-        name: "AllAppsScreenContent",
+        'Errore _loadInitialData: $e',
+        name: 'AllAppsScreenContent',
         stackTrace: s,
       );
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -421,31 +341,24 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     if (!mounted) return;
     setState(() => _isSearchLoading = true);
 
-    final lowercaseQuery = query.trim().toLowerCase();
-    List<Map<String, dynamic>> filtered;
-
-    if (lowercaseQuery.isEmpty) {
-      filtered = List.from(_allAppsWithData);
-    } else {
-      filtered =
-          _allAppsWithData.where((app) {
-            final name = (app['appName'] as String? ?? '').toLowerCase();
-            final pkg = (app['packageName'] as String? ?? '').toLowerCase();
-            return name.contains(lowercaseQuery) ||
-                pkg.contains(lowercaseQuery);
-          }).toList();
-    }
+    final q = query.trim().toLowerCase();
+    final filtered =
+        q.isEmpty
+            ? List<Map<String, dynamic>>.from(_allAppsWithData)
+            : _allAppsWithData.where((app) {
+              final name = (app['appName'] as String? ?? '').toLowerCase();
+              final pkg = (app['packageName'] as String? ?? '').toLowerCase();
+              return name.contains(q) || pkg.contains(q);
+            }).toList();
 
     filtered.sort((a, b) {
-      final countA = a['clickCount'] as int? ?? 0;
-      final countB = b['clickCount'] as int? ?? 0;
-      int compare = countB.compareTo(countA);
-      if (compare == 0) {
-        final nameA = a['appName'] as String? ?? '';
-        final nameB = b['appName'] as String? ?? '';
-        compare = nameA.toLowerCase().compareTo(nameB.toLowerCase());
-      }
-      return compare;
+      final cmp = (b['clickCount'] as int? ?? 0).compareTo(
+        a['clickCount'] as int? ?? 0,
+      );
+      if (cmp != 0) return cmp;
+      return (a['appName'] as String? ?? '').toLowerCase().compareTo(
+        (b['appName'] as String? ?? '').toLowerCase(),
+      );
     });
 
     Future.microtask(() {
@@ -462,13 +375,11 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
   // AZIONI UTENTE
   // ---------------------------------------------------------------------------
 
-  /// Unico punto in cui i preferiti vengono scritti su disco: quando
-  /// l'utente tocca esplicitamente la stella.
+  /// Scrittura su disco dei preferiti: SOLO qui e in package_removed.
   void _toggleFavorite(Map<String, dynamic> app) {
     final pkg = app['packageName'] as String? ?? '';
     if (pkg.isEmpty || !mounted) return;
     final isFav = _favoritePackages.contains(pkg);
-
     setState(() {
       if (isFav) {
         _favoritePackages.remove(pkg);
@@ -476,10 +387,7 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
         _favoritePackages.add(pkg);
       }
     });
-
-    // Scrittura su disco: avviene solo qui e in _handlePackageEvent (package_removed).
     widget.onFavoritesUpdated(getUpdatedFavoritesData());
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -493,13 +401,26 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     );
   }
 
+  /// Costruisce la lista preferiti da passare a MainScaffold.
+  /// Usa _allAppsWithData per i nomi se disponibili; fallback su
+  /// widget.currentFavorites per non perdere voci durante il caricamento.
   List<Map<String, String>> getUpdatedFavoritesData() {
-    return _allAppsWithData
-        .where((app) => _favoritePackages.contains(app['packageName']))
+    final loadedNames = <String, String>{
+      for (final app in _allAppsWithData)
+        if ((app['packageName'] as String?)?.isNotEmpty == true)
+          app['packageName'] as String: app['appName'] as String? ?? 'App',
+    };
+    final fallbackNames = <String, String>{
+      for (final fav in widget.currentFavorites)
+        if ((fav['packageName'] ?? '').isNotEmpty)
+          fav['packageName']!: fav['appName'] ?? 'App',
+    };
+    return _favoritePackages
+        .where((pkg) => pkg.isNotEmpty)
         .map(
-          (app) => {
-            'appName': app['appName'] as String? ?? 'App',
-            'packageName': app['packageName'] as String? ?? '',
+          (pkg) => {
+            'appName': loadedNames[pkg] ?? fallbackNames[pkg] ?? 'App',
+            'packageName': pkg,
           },
         )
         .toList();
@@ -512,8 +433,9 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
       if (_isDeleteMode) {
         _swingController.repeat(reverse: true);
       } else {
-        _swingController.stop();
-        _swingController.reset();
+        _swingController
+          ..stop()
+          ..reset();
       }
     });
   }
@@ -522,9 +444,7 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
     final pkg = app['packageName'] as String? ?? '';
     final appName = app['appName'] as String? ?? 'App';
     if (pkg.isEmpty || !mounted) return;
-
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     showDialog(
       context: context,
@@ -550,11 +470,12 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
                 onPressed: () async {
                   Navigator.of(context).pop();
                   developer.log(
-                    'Avvio intent disinstallazione per $pkg...',
+                    'Avvio disinstallazione per $pkg...',
                     name: 'AllAppsScreenContent',
                   );
                   final success = await uninstallAppByPackage(pkg);
-                  if (!success && mounted) {
+                  if (!mounted) return;
+                  if (!success) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -564,12 +485,9 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
+                  } else {
                     developer.log(
-                      'Fallimento avvio intent disinstallazione per $pkg',
-                    );
-                  } else if (success) {
-                    developer.log(
-                      'Intent disinstallazione per $pkg avviato. In attesa evento package_removed...',
+                      'Intent disinstallazione per $pkg avviato. Attendo package_removed...',
                     );
                   }
                 },
@@ -586,12 +504,31 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
   void _incrementAppClickCount(String packageName) {
     if (packageName.isEmpty || !mounted) return;
     setState(() {
-      final currentCount = _clickCounts[packageName] ?? 0;
-      _clickCounts[packageName] = currentCount + 1;
+      _clickCounts[packageName] = (_clickCounts[packageName] ?? 0) + 1;
       _clickCountsChangedSinceLastSave = true;
       _applyFilterAndSort(_searchController.text.trim());
     });
     _scheduleSaveClickCounts();
+  }
+
+  void _handleAppTap(Map<String, dynamic> app) async {
+    final pkg = app['packageName'] as String? ?? '';
+    if (_isDeleteMode) {
+      _confirmDeleteApp(app);
+      return;
+    }
+    if (pkg.isEmpty) return;
+    final ok = await openAppByPackage(pkg);
+    if (ok) {
+      _incrementAppClickCount(pkg);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Impossibile aprire "${app['appName']}"'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -602,10 +539,10 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
     return SafeArea(
       child: Column(
         children: [
-          // --- Barra di Ricerca e Pulsante Delete ---
           Padding(
             padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 4.0),
             child: Row(
@@ -641,7 +578,7 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20.0),
                           borderSide: BorderSide(
-                            color: theme.primaryColor,
+                            color: colorScheme.primary,
                             width: 1.5,
                           ),
                         ),
@@ -680,7 +617,6 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
               ],
             ),
           ),
-          // --- Lista App o Indicatori di Stato ---
           Expanded(
             child:
                 _isLoading
@@ -715,16 +651,13 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
                       itemBuilder: (context, index) {
                         final app = _filteredSortedApps[index];
                         final pkg = app['packageName'] as String? ?? '';
-                        final isFav = _favoritePackages.contains(pkg);
-                        final iconPath = _iconPathCache[pkg];
-
                         return _AppListItem(
                           key: ValueKey(pkg),
                           appData: app,
                           isDeleteMode: _isDeleteMode,
-                          isFavorite: isFav,
+                          isFavorite: _favoritePackages.contains(pkg),
                           swingAnimation: _swingAnimation,
-                          iconPath: iconPath,
+                          iconPath: _iconPathCache[pkg],
                           onToggleFavorite: () => _toggleFavorite(app),
                           onTap: () => _handleAppTap(app),
                           onDelete: () => _confirmDeleteApp(app),
@@ -735,25 +668,6 @@ class _AllAppsScreenContentState extends State<AllAppsScreenContent>
         ],
       ),
     );
-  }
-
-  void _handleAppTap(Map<String, dynamic> app) async {
-    final pkg = app['packageName'] as String? ?? '';
-    if (!_isDeleteMode && pkg.isNotEmpty) {
-      final ok = await openAppByPackage(pkg);
-      if (ok) {
-        _incrementAppClickCount(pkg);
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Impossibile aprire "${app['appName']}"'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } else if (_isDeleteMode) {
-      _confirmDeleteApp(app);
-    }
   }
 }
 
@@ -771,7 +685,7 @@ class _AppListItem extends StatelessWidget {
   final VoidCallback onDelete;
 
   const _AppListItem({
-    Key? key,
+    super.key,
     required this.appData,
     required this.isDeleteMode,
     required this.isFavorite,
@@ -780,18 +694,16 @@ class _AppListItem extends StatelessWidget {
     required this.onToggleFavorite,
     required this.onTap,
     required this.onDelete,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final textTheme = theme.textTheme;
     final appName = appData['appName'] as String? ?? 'App Sconosciuta';
     final pkg = appData['packageName'] as String? ?? '';
 
-    Widget iconContent;
-
+    final Widget iconContent;
     if (iconPath != null && iconPath!.isNotEmpty) {
       iconContent = ClipRRect(
         borderRadius: BorderRadius.circular(8.0),
@@ -803,7 +715,7 @@ class _AppListItem extends StatelessWidget {
           frameBuilder: (context, child, frame, wasSyncLoaded) {
             if (wasSyncLoaded) return child;
             return AnimatedOpacity(
-              opacity: frame == null ? 0 : 1,
+              opacity: frame == null ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut,
               child: child,
@@ -811,13 +723,13 @@ class _AppListItem extends StatelessWidget {
           },
           errorBuilder: (context, error, stackTrace) {
             developer.log(
-              "Errore Image.file per $pkg ($iconPath): $error",
-              name: "AppListItem",
+              'Errore Image.file per $pkg: $error',
+              name: 'AppListItem',
             );
             return Icon(
               Icons.broken_image,
               size: 40,
-              color: colorScheme.error.withOpacity(0.7),
+              color: colorScheme.error.withValues(alpha: 0.7),
             );
           },
         ),
@@ -826,7 +738,7 @@ class _AppListItem extends StatelessWidget {
       iconContent = Icon(
         Icons.android,
         size: 40,
-        color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
       );
     }
 
@@ -834,7 +746,7 @@ class _AppListItem extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 4.0),
       elevation: 0.5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-      color: theme.cardColor,
+      color: colorScheme.surface,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -869,7 +781,7 @@ class _AppListItem extends StatelessWidget {
                       textDirection: TextDirection.ltr,
                       child: Text(
                         appName,
-                        style: textTheme.titleMedium?.copyWith(
+                        style: theme.textTheme.titleMedium?.copyWith(
                           color: colorScheme.onSurface,
                         ),
                         maxLines: 1,
@@ -880,8 +792,8 @@ class _AppListItem extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         'Tocca per disinstallare',
-                        style: textTheme.bodySmall?.copyWith(
-                          color: colorScheme.error.withOpacity(0.9),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.error.withValues(alpha: 0.9),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -906,7 +818,9 @@ class _AppListItem extends StatelessWidget {
                     color:
                         isFavorite
                             ? Colors.amber[600]
-                            : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                            : colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.7,
+                            ),
                     size: 28,
                   ),
                   tooltip:
@@ -924,7 +838,7 @@ class _AppListItem extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
-// Classe Helper Debouncer
+// Debouncer
 // -----------------------------------------------------------------------------
 class Debouncer {
   final int milliseconds;
@@ -932,12 +846,10 @@ class Debouncer {
 
   Debouncer({required this.milliseconds});
 
-  run(VoidCallback action) {
+  void run(VoidCallback action) {
     _timer?.cancel();
     _timer = Timer(Duration(milliseconds: milliseconds), action);
   }
 
-  dispose() {
-    _timer?.cancel();
-  }
+  void dispose() => _timer?.cancel();
 }
